@@ -20,6 +20,8 @@ interface Attachment {
 interface SendConfig {
   to: string;
   from: string;
+  cc?: string;
+  bcc?: string;
   date?: string;
   subject: string;
   content: string;

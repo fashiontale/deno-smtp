@@ -84,6 +84,20 @@ export class SmtpClient {
     this.assertCode(await this.readCmd(), CommandCode.OK);
     await this.writeCmd("RCPT", "TO:", to);
     this.assertCode(await this.readCmd(), CommandCode.OK);
+
+    let cc, ccData;
+    if (config.cc) {
+      [cc, ccData] = this.parseAddress(config.cc);
+      await this.writeCmd("RCPT", "TO:", cc);
+      this.assertCode(await this.readCmd(), CommandCode.OK);
+    }
+
+    if (config.bcc) {
+      const [bcc,] = this.parseAddress(config.bcc);
+      await this.writeCmd("RCPT", "TO:", bcc);
+      this.assertCode(await this.readCmd(), CommandCode.OK);
+    }
+
     await this.writeCmd("DATA");
     this.assertCode(await this.readCmd(), CommandCode.BEGIN_DATA);
 
@@ -91,6 +105,10 @@ export class SmtpClient {
     await this.writeCmd("From: ", fromData);
     await this.writeCmd("To: ", toData);
     await this.writeCmd("Date: ", date);
+
+    if (config.cc && ccData) {
+      await this.writeCmd("Cc: ", ccData);
+    }
 
     if (config.attachments && config.attachments.length > 0) {
       await this.writeCmd(
@@ -158,21 +176,23 @@ export class SmtpClient {
     while (true) {
       const cmd = await this.readCmd();
       if (!cmd || !cmd.args.startsWith("-")) break;
-      if (cmd.args == "-STARTTLS") startTLS = true
+      if (cmd.args == "-STARTTLS") startTLS = true;
     }
 
     if (startTLS) {
-      await this.writeCmd("STARTTLS")
-      this.assertCode(await this.readCmd(), CommandCode.READY)
-    
-      this._conn = await Deno.startTls(this._conn, { hostname: config.hostname });
+      await this.writeCmd("STARTTLS");
+      this.assertCode(await this.readCmd(), CommandCode.READY);
+
+      this._conn = await Deno.startTls(this._conn, {
+        hostname: config.hostname,
+      });
 
       const reader = new BufReader(this._conn);
       this._writer = new BufWriter(this._conn);
       this._reader = new TextProtoReader(reader);
 
       await this.writeCmd("EHLO", config.hostname);
-  
+
       while (true) {
         const cmd = await this.readCmd();
         if (!cmd || !cmd.args.startsWith("-")) break;
@@ -234,6 +254,7 @@ export class SmtpClient {
     return (config as ConnectConfigWithAuthentication).username !== undefined;
   }
 
+  // Note: email can be email / name combination. TODO find better name for function and parameter
   private parseAddress(email: string): [string, string] {
     const m = email.toString().match(/(.*)\s<(.*)>/);
     return m?.length === 3
